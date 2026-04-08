@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Checkers — Community Hub</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --pink:#ff6eb4;--yellow:#ffd93d;--mint:#6ee7b7;--sky:#60c8f5;
+  --coral:#ff7f5c;--purple:#b48aff;--red:#ff5c5c;
+  --bg:#fff9f0;--card:#ffffff;--text:#2d2640;--muted:#9990b8;
+  --radius:20px;--shadow:0 8px 32px rgba(100,60,180,.10);
+}
+body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+
+/* blobs */
+.blobs{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.blob{position:absolute;border-radius:50%;filter:blur(70px);opacity:.15;animation:drift 12s ease-in-out infinite alternate}
+.blob1{width:500px;height:500px;background:var(--pink);top:-150px;left:-100px}
+.blob2{width:400px;height:400px;background:var(--yellow);top:40%;right:-100px;animation-delay:3s}
+.blob3{width:350px;height:350px;background:var(--mint);bottom:-100px;left:30%;animation-delay:6s}
+.blob4{width:300px;height:300px;background:var(--purple);top:20%;left:20%;animation-delay:9s}
+@keyframes drift{from{transform:translate(0,0) scale(1)}to{transform:translate(40px,30px) scale(1.08)}}
+
+/* layout */
+.shell{position:relative;z-index:1;display:grid;grid-template-rows:auto 1fr;min-height:100vh}
+
+/* top bar */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:.8rem 1.4rem;background:rgba(255,255,255,.85);
+  backdrop-filter:blur(12px);border-bottom:2px solid #f0e8ff;
+  position:sticky;top:0;z-index:100;gap:.8rem;flex-wrap:wrap;
+}
+.logo{font-family:'Fredoka One',cursive;font-size:1.6rem;
+  background:linear-gradient(135deg,var(--pink),var(--purple));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.topbar-right{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.wallet-pill{display:flex;align-items:center;gap:.5rem;
+  background:linear-gradient(135deg,#fff0fa,#f0f0ff);
+  border:2px solid var(--pink);border-radius:50px;padding:.35rem .9rem;
+  font-size:.8rem;font-weight:700}
+.wallet-dot{width:8px;height:8px;border-radius:50%;background:var(--mint);box-shadow:0 0 6px var(--mint)}
+.badge-checkers{background:linear-gradient(135deg,var(--yellow),var(--coral));
+  color:white;border-radius:50px;padding:.3rem .8rem;font-size:.78rem;font-weight:800}
+.badge-streak{background:linear-gradient(135deg,var(--coral),var(--pink));
+  color:white;border-radius:50px;padding:.3rem .8rem;font-size:.78rem;font-weight:800}
+.btn-connect{
+  padding:.5rem 1.1rem;font-family:'Fredoka One',cursive;font-size:1rem;
+  color:white;border:none;border-radius:12px;cursor:pointer;
+  background:linear-gradient(135deg,var(--pink),var(--purple));
+  box-shadow:0 4px 16px rgba(180,138,255,.3);transition:transform .15s}
+.btn-connect:hover{transform:translateY(-1px)}
+
+/* main content */
+.main{display:grid;grid-template-columns:260px 1fr;gap:0;height:calc(100vh - 65px)}
+
+/* sidebar */
+.sidebar{
+  background:rgba(255,255,255,.9);border-right:2px solid #f0e8ff;
+  padding:1rem .8rem;display:flex;flex-direction:column;gap:.5rem;overflow-y:auto}
+.sidebar-title{font-size:.7rem;font-weight:800;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);padding:.4rem .5rem .2rem}
+.room-btn{
+  width:100%;display:flex;align-items:center;gap:.7rem;
+  padding:.7rem .9rem;border-radius:14px;border:none;background:transparent;
+  cursor:pointer;text-align:left;font-family:'Nunito',sans-serif;font-size:.9rem;
+  font-weight:700;color:var(--text);transition:background .15s,transform .1s}
+.room-btn:hover{background:#f5f0ff}
+.room-btn.active{background:linear-gradient(135deg,#f0ebff,#ffe8f5);color:var(--purple)}
+.room-btn.locked{opacity:.55;cursor:not-allowed}
+.room-icon{font-size:1.1rem;flex-shrink:0}
+.room-name{flex:1}
+.room-lock{font-size:.75rem;color:var(--muted)}
+.room-req{font-size:.68rem;color:var(--muted);margin-left:auto;
+  background:#f0ebff;padding:2px 6px;border-radius:6px;white-space:nowrap}
+
+/* checkin sidebar card */
+.checkin-side{
+  background:linear-gradient(135deg,#fff0f8,#f0f0ff);
+  border:2px solid var(--pink);border-radius:16px;padding:1rem;margin-top:.5rem}
+.streak-mini{text-align:center;margin-bottom:.6rem}
+.streak-fire{font-size:2rem}
+.streak-count{font-family:'Fredoka One',cursive;font-size:1.8rem;
+  background:linear-gradient(135deg,var(--coral),var(--pink));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.streak-lbl{font-size:.72rem;color:var(--muted);font-weight:700}
+.btn-checkin-side{
+  width:100%;padding:.6rem;font-family:'Fredoka One',cursive;font-size:.95rem;
+  color:white;border:none;border-radius:12px;cursor:pointer;
+  background:linear-gradient(135deg,var(--mint),var(--sky));
+  transition:transform .15s,opacity .2s}
+.btn-checkin-side:hover:not(:disabled){transform:translateY(-1px)}
+.btn-checkin-side:disabled{opacity:.55;cursor:not-allowed}
+.countdown-mini{text-align:center;font-size:.75rem;color:var(--muted);
+  font-weight:700;margin-top:.4rem}
+.countdown-time-mini{font-family:'Fredoka One',cursive;font-size:1rem;color:var(--coral)}
+
+/* nft mint card */
+.nft-side{
+  background:linear-gradient(135deg,#f8f0ff,#fff0f8);
+  border:2px solid var(--purple);border-radius:16px;padding:1rem;margin-top:.3rem}
+.nft-title{font-family:'Fredoka One',cursive;font-size:1rem;color:var(--purple);margin-bottom:.4rem}
+.nft-info{font-size:.75rem;color:var(--muted);margin-bottom:.6rem;line-height:1.5}
+.btn-mint{
+  width:100%;padding:.6rem;font-family:'Fredoka One',cursive;font-size:.9rem;
+  color:white;border:none;border-radius:12px;cursor:pointer;
+  background:linear-gradient(135deg,var(--purple),var(--pink));
+  transition:transform .15s,opacity .2s}
+.btn-mint:hover:not(:disabled){transform:translateY(-1px)}
+.btn-mint:disabled{opacity:.55;cursor:not-allowed}
+.pass-owned{
+  text-align:center;background:#f0fff8;border:1.5px solid var(--mint);
+  border-radius:12px;padding:.6rem;font-size:.8rem;font-weight:800;color:#0d7a4e}
+
+/* chat area */
+.chat-area{display:flex;flex-direction:column;height:100%}
+
+/* room header */
+.room-header{
+  padding:1rem 1.4rem;background:rgba(255,255,255,.9);
+  border-bottom:2px solid #f0e8ff;display:flex;align-items:center;gap:.8rem}
+.room-header-icon{font-size:1.5rem}
+.room-header-name{font-family:'Fredoka One',cursive;font-size:1.2rem;color:var(--text)}
+.room-header-desc{font-size:.78rem;color:var(--muted);font-weight:600}
+.room-header-badge{
+  margin-left:auto;font-size:.72rem;font-weight:800;padding:.3rem .8rem;
+  border-radius:50px;white-space:nowrap}
+.badge-open{background:#d4edda;color:#155724}
+.badge-vip{background:linear-gradient(135deg,var(--yellow),var(--coral));color:white}
+.badge-streak{background:linear-gradient(135deg,var(--coral),var(--pink));color:white}
+.badge-nft{background:linear-gradient(135deg,var(--purple),var(--pink));color:white}
+
+/* locked overlay */
+.locked-overlay{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:1rem;padding:2rem;text-align:center}
+.lock-icon{font-size:4rem}
+.lock-title{font-family:'Fredoka One',cursive;font-size:1.5rem;color:var(--purple)}
+.lock-desc{color:var(--muted);font-size:.9rem;max-width:280px;line-height:1.6}
+.lock-progress{
+  background:#f0ebff;border-radius:12px;padding:.8rem 1.2rem;
+  font-size:.85rem;font-weight:700;color:var(--purple);border:1.5px solid var(--purple)}
+
+/* messages */
+.messages{flex:1;overflow-y:auto;padding:1rem 1.2rem;display:flex;flex-direction:column;gap:.6rem}
+.msg{display:flex;gap:.7rem;animation:msgIn .25s ease both}
+@keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.msg-avatar{
+  width:36px;height:36px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1rem;font-weight:800;color:white;font-family:'Fredoka One',cursive}
+.msg-body{flex:1;min-width:0}
+.msg-header{display:flex;align-items:baseline;gap:.5rem;margin-bottom:.15rem}
+.msg-addr{font-size:.78rem;font-weight:800;color:var(--purple)}
+.msg-addr.me{color:var(--coral)}
+.msg-time{font-size:.68rem;color:var(--muted)}
+.msg-streak-badge{font-size:.65rem;background:linear-gradient(135deg,var(--coral),var(--pink));
+  color:white;border-radius:6px;padding:1px 5px;font-weight:800}
+.msg-text{
+  background:white;border:1.5px solid #f0ebff;border-radius:0 14px 14px 14px;
+  padding:.5rem .8rem;font-size:.88rem;line-height:1.5;word-break:break-word}
+.msg.mine .msg-text{
+  background:linear-gradient(135deg,#f0ebff,#ffe8f5);
+  border-color:var(--purple);border-radius:14px 14px 0 14px}
+.msg.mine{flex-direction:row-reverse}
+.msg.mine .msg-header{flex-direction:row-reverse}
+.msg.mine .msg-body{display:flex;flex-direction:column;align-items:flex-end}
+
+.system-msg{text-align:center;font-size:.75rem;color:var(--muted);
+  font-weight:700;padding:.3rem;font-style:italic}
+
+/* input bar */
+.input-bar{
+  padding:.8rem 1.2rem;background:rgba(255,255,255,.95);
+  border-top:2px solid #f0e8ff;display:flex;gap:.8rem;align-items:center}
+.msg-input{
+  flex:1;padding:.7rem 1rem;border:2px solid #e8e0ff;border-radius:14px;
+  font-family:'Nunito',sans-serif;font-size:.9rem;outline:none;
+  background:white;color:var(--text);transition:border-color .2s}
+.msg-input:focus{border-color:var(--purple)}
+.msg-input:disabled{background:#f8f5ff;cursor:not-allowed}
+.btn-send{
+  padding:.7rem 1.1rem;font-family:'Fredoka One',cursive;font-size:.95rem;
+  color:white;border:none;border-radius:14px;cursor:pointer;
+  background:linear-gradient(135deg,var(--purple),var(--pink));
+  transition:transform .15s,opacity .2s;white-space:nowrap}
+.btn-send:hover:not(:disabled){transform:translateY(-1px)}
+.btn-send:disabled{opacity:.5;cursor:not-allowed}
+
+/* leaderboard panel (replaces chat for that room) */
+.lb-panel{flex:1;overflow-y:auto;padding:1.2rem}
+.lb-row{display:flex;align-items:center;gap:.8rem;padding:.8rem .6rem;
+  border-radius:12px;transition:background .2s}
+.lb-row:hover{background:#faf7ff}
+.lb-row+.lb-row{border-top:1px solid #f0ebff}
+.lb-rank{font-family:'Fredoka One',cursive;font-size:1.1rem;width:30px;text-align:center;color:var(--muted);flex-shrink:0}
+.lb-rank.gold{color:#f5b800}.lb-rank.silver{color:#a0a8b8}.lb-rank.bronze{color:#c97a3a}
+.lb-addr{flex:1;font-size:.82rem;font-weight:700;font-family:'Courier New',monospace;color:var(--text)}
+.lb-streak{font-family:'Fredoka One',cursive;font-size:1rem;color:var(--coral)}
+.lb-you{font-size:.68rem;background:var(--pink);color:white;border-radius:6px;padding:1px 6px;font-weight:800;font-family:'Nunito',sans-serif}
+
+/* toast */
+.toast{position:fixed;bottom:2rem;left:50%;transform:translateX(-50%) translateY(100px);
+  background:var(--text);color:white;border-radius:14px;padding:.8rem 1.4rem;
+  font-weight:700;font-size:.9rem;box-shadow:0 8px 32px rgba(0,0,0,.18);z-index:999;
+  transition:transform .35s cubic-bezier(.34,1.56,.64,1),opacity .35s;opacity:0;white-space:nowrap}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+.toast.success{background:linear-gradient(135deg,#28c97a,#00b4d8)}
+.toast.error{background:linear-gradient(135deg,#ff6b6b,#ee5a24)}
+.toast.warn{background:linear-gradient(135deg,var(--yellow),var(--coral))}
+
+/* spinner */
+.spinner{display:inline-block;width:14px;height:14px;border:2.5px solid rgba(255,255,255,.4);
+  border-top-color:white;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+#confetti{position:fixed;inset:0;pointer-events:none;z-index:998}
+
+.hidden{display:none!important}
+
+/* responsive */
+@media(max-width:640px){
+  .main{grid-template-columns:1fr}
+  .sidebar{display:none}
+}
+</style>
+</head>
+<body>
+<div class="blobs">
+  <div class="blob blob1"></div><div class="blob blob2"></div>
+  <div class="blob blob3"></div><div class="blob blob4"></div>
+</div>
+<canvas id="confetti"></canvas>
+
+<div class="shell">
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="logo">✔ Checkers</div>
+    <div class="topbar-right">
+      <div id="topStats" class="hidden" style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <div class="badge-checkers" id="topBalance">0 CHECKERS</div>
+        <div class="badge-streak" id="topStreak">🔥 0 day streak</div>
+      </div>
+      <div id="walletPill" class="wallet-pill hidden">
+        <div class="wallet-dot"></div>
+        <span id="walletAddr">—</span>
+      </div>
+      <button class="btn-connect" id="connectBtn" onclick="connectWallet()">Connect MetaMask</button>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main" id="mainArea" style="display:none">
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-title">💬 Chat Rooms</div>
+
+      <button class="room-btn active" id="rb-global" onclick="switchRoom('global')">
+        <span class="room-icon">🌍</span>
+        <span class="room-name">Global Chat</span>
+        <span class="room-req">Open</span>
+      </button>
+
+      <button class="room-btn" id="rb-vip" onclick="switchRoom('vip')">
+        <span class="room-icon">💎</span>
+        <span class="room-name">VIP Lounge</span>
+        <span class="room-req">500 CHECKERS</span>
+      </button>
+
+      <button class="room-btn" id="rb-streak" onclick="switchRoom('streak')">
+        <span class="room-icon">🔥</span>
+        <span class="room-name">Streak Masters</span>
+        <span class="room-req">7 day streak</span>
+      </button>
+
+      <button class="room-btn" id="rb-pass" onclick="switchRoom('pass')">
+        <span class="room-icon">🎫</span>
+        <span class="room-name">Pass Holders</span>
+        <span class="room-req">NFT Pass</span>
+      </button>
+
+      <button class="room-btn" id="rb-lb" onclick="switchRoom('lb')">
+        <span class="room-icon">🏅</span>
+        <span class="room-name">Leaderboard</span>
+        <span class="room-req">Open</span>
+      </button>
+
+      <div style="flex:1"></div>
+
+      <!-- Check-in widget -->
+      <div class="checkin-side">
+        <div class="streak-mini">
+          <div class="streak-fire">🔥</div>
+          <div class="streak-count" id="sideStreak">0</div>
+          <div class="streak-lbl">day streak</div>
+        </div>
+        <button class="btn-checkin-side" id="sideCheckinBtn" onclick="doCheckIn()">✅ Check In</button>
+        <div id="sideCountdownWrap" class="hidden">
+          <div class="countdown-mini">Next check-in in</div>
+          <div class="countdown-time-mini" id="sideCountdown">00:00:00</div>
+        </div>
+      </div>
+
+      <!-- NFT mint widget -->
+      <div class="nft-side">
+        <div class="nft-title">🎫 Checkers Pass</div>
+        <div id="passOwned" class="pass-owned hidden">✔ You own a Pass!</div>
+        <div id="passNotOwned">
+          <div class="nft-info">Burn <b>100 CHECKERS</b> to mint your membership NFT and unlock the Pass Holders room.</div>
+          <button class="btn-mint" id="mintBtn" onclick="mintPass()">Mint Pass (100 CHECKERS)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHAT AREA -->
+    <div class="chat-area" id="chatArea">
+      <!-- room header -->
+      <div class="room-header">
+        <div class="room-header-icon" id="rhIcon">🌍</div>
+        <div>
+          <div class="room-header-name" id="rhName">Global Chat</div>
+          <div class="room-header-desc" id="rhDesc">Open to all connected wallets</div>
+        </div>
+        <div class="room-header-badge badge-open" id="rhBadge">Open</div>
+      </div>
+
+      <!-- locked overlay (hidden by default) -->
+      <div class="locked-overlay hidden" id="lockedOverlay">
+        <div class="lock-icon">🔒</div>
+        <div class="lock-title" id="lockTitle">Room Locked</div>
+        <div class="lock-desc" id="lockDesc">You don't meet the requirements for this room yet.</div>
+        <div class="lock-progress" id="lockProgress"></div>
+      </div>
+
+      <!-- messages -->
+      <div class="messages" id="messages"></div>
+
+      <!-- leaderboard panel -->
+      <div class="lb-panel hidden" id="lbPanel"></div>
+
+      <!-- input bar -->
+      <div class="input-bar" id="inputBar">
+        <input class="msg-input" id="msgInput" placeholder="Send a message..." maxlength="280"
+               onkeydown="if(event.key==='Enter')sendMessage()"/>
+        <button class="btn-send" id="sendBtn" onclick="sendMessage()">Send 🚀</button>
+      </div>
+    </div>
+
+  </div><!-- /.main -->
+</div><!-- /.shell -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─────────────────────────────────────────────────────────────
+// CONTRACT ADDRESSES  (update after redeployment)
+// ─────────────────────────────────────────────────────────────
+const CHECKERS_TOKEN = "0xdB3eC8390d2D43346e2D3202cf43B590dcD3dEBb";
+const CHECKIN_ADDR   = "0x5eeD0fC11E326E1D88007c1dCF46a7023760eC27";
+let   PASS_ADDR      = "";  // Fill in after deploying CheckersPass.sol
+
+// ─────────────────────────────────────────────────────────────
+// GATING RULES
+// ─────────────────────────────────────────────────────────────
+const VIP_THRESHOLD    = 500;   // CHECKERS balance
+const STREAK_THRESHOLD = 7;     // streak days
+
+// ─────────────────────────────────────────────────────────────
+// ABIs
+// ─────────────────────────────────────────────────────────────
+const TOKEN_ABI = [
+  "function balanceOf(address) view returns (uint256)",
+  "function decimals() view returns (uint8)",
+  "function approve(address spender, uint256 amount) returns (bool)"
+];
+const CHECKIN_ABI = [
+  "function checkIn() external",
+  "function getUser(address) view returns (uint256 streak,uint256 lastCheckIn,uint256 totalCheckIns,uint256 totalEarned,bool canCheckInToday,uint256 nextReward)",
+  "function totalUsers() view returns (uint256)",
+  "function getUsers(uint256 offset,uint256 limit) view returns (address[] addrs,uint256[] streaks)"
+];
+const PASS_ABI = [
+  "function mint() external",
+  "function hasPass(address) view returns (bool)",
+  "function totalMinted() view returns (uint256)"
+];
+
+// ─────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────
+let provider, signer, address;
+let tokenContract, checkInContract, passContract;
+let userBalance = 0, userStreak = 0, userCanCheckIn = false, userHasPass = false;
+let currentRoom = "global";
+let countdownInterval;
+
+// In-memory chat store (room → messages[])
+// In production replace with XMTP or a decentralised messaging layer
+const chatStore = {
+  global: [], vip: [], streak: [], pass: []
+};
+
+// ─────────────────────────────────────────────────────────────
+// CONNECT
+// ─────────────────────────────────────────────────────────────
+async function connectWallet() {
+  if (!window.ethereum) { toast("Please install MetaMask!", "error"); return; }
+  try {
+    setConnectBtn("Connecting...", true);
+    provider = new ethers.BrowserProvider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+    signer  = await provider.getSigner();
+    address = await signer.getAddress();
+
+    tokenContract   = new ethers.Contract(CHECKERS_TOKEN, TOKEN_ABI,   signer);
+    checkInContract = new ethers.Contract(CHECKIN_ADDR,   CHECKIN_ABI, signer);
+    if (PASS_ADDR) passContract = new ethers.Contract(PASS_ADDR, PASS_ABI, signer);
+
+    // Show UI
+    document.getElementById("connectBtn").classList.add("hidden");
+    show("walletPill"); show("topStats");
+    document.getElementById("walletAddr").textContent = short(address);
+    document.getElementById("mainArea").style.display = "";
+
+    await refreshAll();
+    loadRoom("global");
+    addSystemMsg("global", "Welcome to Checkers! 👋");
+
+    window.ethereum.on("accountsChanged", ()=>location.reload());
+    window.ethereum.on("chainChanged",    ()=>location.reload());
+  } catch(e) {
+    console.error(e);
+    toast(e.code===4001 ? "Connection rejected." : "Failed to connect.", "error");
+    setConnectBtn("Connect MetaMask", false);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// DATA REFRESH
+// ─────────────────────────────────────────────────────────────
+async function refreshAll() {
+  await Promise.all([refreshBalance(), refreshUser(), refreshPass()]);
+  updateGatingUI();
+}
+
+async function refreshBalance() {
+  try {
+    const raw = await tokenContract.balanceOf(address);
+    userBalance = parseFloat(ethers.formatUnits(raw, 18));
+    document.getElementById("topBalance").textContent = userBalance.toLocaleString(undefined,{maximumFractionDigits:1}) + " CHECKERS";
+  } catch(e){console.error(e)}
+}
+
+async function refreshUser() {
+  try {
+    const u = await checkInContract.getUser(address);
+    userStreak      = Number(u.streak);
+    userCanCheckIn  = u.canCheckInToday;
+    const lastCI    = Number(u.lastCheckIn);
+
+    document.getElementById("sideStreak").textContent = userStreak;
+    document.getElementById("topStreak").textContent  = "🔥 " + userStreak + " day streak";
+
+    const btn = document.getElementById("sideCheckinBtn");
+    clearInterval(countdownInterval);
+    if (userCanCheckIn) {
+      btn.disabled = false; btn.textContent = "✅ Check In";
+      hide("sideCountdownWrap");
+    } else {
+      btn.disabled = true; btn.textContent = "🎉 Done Today!";
+      show("sideCountdownWrap"); startCountdown();
+    }
+  } catch(e){console.error(e)}
+}
+
+async function refreshPass() {
+  if (!passContract) return;
+  try {
+    userHasPass = await passContract.hasPass(address);
+    if (userHasPass) {
+      show("passOwned"); hide("passNotOwned");
+    } else {
+      hide("passOwned"); show("passNotOwned");
+    }
+  } catch(e){console.error(e)}
+}
+
+// ─────────────────────────────────────────────────────────────
+// GATING
+// ─────────────────────────────────────────────────────────────
+function canAccess(room) {
+  if (room === "global" || room === "lb") return true;
+  if (room === "vip")    return userBalance >= VIP_THRESHOLD;
+  if (room === "streak") return userStreak  >= STREAK_THRESHOLD;
+  if (room === "pass")   return userHasPass || !PASS_ADDR;
+  return false;
+}
+
+function updateGatingUI() {
+  const rooms = ["global","vip","streak","pass","lb"];
+  rooms.forEach(r => {
+    const btn = document.getElementById("rb-"+r);
+    if (!btn) return;
+    if (canAccess(r)) btn.classList.remove("locked");
+    else              btn.classList.add("locked");
+  });
+  // Re-render current room in case access changed
+  if (currentRoom !== "lb") renderLockState(currentRoom);
+}
+
+function renderLockState(room) {
+  const locked = !canAccess(room);
+  const overlay = document.getElementById("lockedOverlay");
+  const msgs    = document.getElementById("messages");
+  const bar     = document.getElementById("inputBar");
+
+  if (locked) {
+    show("lockedOverlay"); hide(msgs); hide(bar);
+    let title="", desc="", progress="";
+    if (room === "vip") {
+      const need = Math.max(0, VIP_THRESHOLD - userBalance);
+      title = "💎 VIP Lounge";
+      desc  = `You need 500 CHECKERS to enter. Keep checking in daily to earn more!`;
+      progress = `Your balance: ${userBalance.toFixed(1)} / 500 CHECKERS (need ${need.toFixed(1)} more)`;
+    } else if (room === "streak") {
+      const need = Math.max(0, STREAK_THRESHOLD - userStreak);
+      title = "🔥 Streak Masters";
+      desc  = `You need a 7-day streak to enter. Check in every day to build it up!`;
+      progress = `Your streak: ${userStreak} / 7 days (need ${need} more)`;
+    } else if (room === "pass") {
+      title = "🎫 Pass Holders";
+      desc  = PASS_ADDR
+        ? "Burn 100 CHECKERS to mint your membership NFT and unlock this room."
+        : "Deploy the CheckersPass contract and add its address to the app to enable this room.";
+      progress = PASS_ADDR
+        ? `Your balance: ${userBalance.toFixed(1)} CHECKERS (mint costs 100)`
+        : "Contract not yet deployed";
+    }
+    document.getElementById("lockTitle").textContent    = title;
+    document.getElementById("lockDesc").textContent     = desc;
+    document.getElementById("lockProgress").textContent = progress;
+  } else {
+    hide("lockedOverlay");
+    show(msgs); show(bar);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// ROOM SWITCHING
+// ─────────────────────────────────────────────────────────────
+const ROOM_META = {
+  global: {icon:"🌍", name:"Global Chat",     desc:"Open to all connected wallets",               badge:"Open",         badgeClass:"badge-open"},
+  vip:    {icon:"💎", name:"VIP Lounge",      desc:"Exclusive room for 500+ CHECKERS holders",     badge:"500 CHECKERS", badgeClass:"badge-vip"},
+  streak: {icon:"🔥", name:"Streak Masters",  desc:"For wallets with a 7+ day check-in streak",   badge:"7 Day Streak", badgeClass:"badge-streak"},
+  pass:   {icon:"🎫", name:"Pass Holders",    desc:"Exclusive room for NFT membership pass holders",badge:"NFT Pass",   badgeClass:"badge-nft"},
+  lb:     {icon:"🏅", name:"Leaderboard",     desc:"Top check-in streaks across all wallets",      badge:"Open",         badgeClass:"badge-open"},
+};
+
+function switchRoom(room) {
+  currentRoom = room;
+  document.querySelectorAll(".room-btn").forEach(b => b.classList.remove("active"));
+  document.getElementById("rb-"+room)?.classList.add("active");
+
+  const m = ROOM_META[room] || ROOM_META.global;
+  document.getElementById("rhIcon").textContent  = m.icon;
+  document.getElementById("rhName").textContent  = m.name;
+  document.getElementById("rhDesc").textContent  = m.desc;
+  const badge = document.getElementById("rhBadge");
+  badge.textContent = m.badge;
+  badge.className   = "room-header-badge " + m.badgeClass;
+
+  hide("lockedOverlay");
+
+  if (room === "lb") {
+    hide("messages"); hide("inputBar"); hide("lockedOverlay");
+    show("lbPanel");
+    loadLeaderboard();
+    return;
+  }
+  hide("lbPanel");
+
+  renderLockState(room);
+  if (canAccess(room)) loadRoom(room);
+}
+
+// ─────────────────────────────────────────────────────────────
+// CHAT (in-memory — replace with XMTP for production)
+// ─────────────────────────────────────────────────────────────
+function loadRoom(room) {
+  const container = document.getElementById("messages");
+  container.innerHTML = "";
+  (chatStore[room] || []).forEach(m => renderMsg(m, container));
+  container.scrollTop = container.scrollHeight;
+}
+
+function sendMessage() {
+  const input = document.getElementById("msgInput");
+  const text  = input.value.trim();
+  if (!text || !address) return;
+  if (!canAccess(currentRoom)) { toast("You don't have access to this room.", "error"); return; }
+
+  const msg = {
+    addr:      address,
+    text:      text,
+    time:      Date.now(),
+    streak:    userStreak,
+  };
+
+  if (!chatStore[currentRoom]) chatStore[currentRoom] = [];
+  chatStore[currentRoom].push(msg);
+  renderMsg(msg, document.getElementById("messages"));
+  document.getElementById("messages").scrollTop = 99999;
+  input.value = "";
+}
+
+function renderMsg(msg, container) {
+  const isMe = msg.addr.toLowerCase() === address.toLowerCase();
+  const color = addrColor(msg.addr);
+  const div = document.createElement("div");
+  div.className = "msg" + (isMe ? " mine" : "");
+  const streakBadge = msg.streak >= 7
+    ? `<span class="msg-streak-badge">🔥${msg.streak}</span>` : "";
+  div.innerHTML = `
+    <div class="msg-avatar" style="background:${color}">${msg.addr.slice(2,4).toUpperCase()}</div>
+    <div class="msg-body">
+      <div class="msg-header">
+        <span class="msg-addr${isMe?' me':''}">${isMe?'You':short(msg.addr)}</span>
+        ${streakBadge}
+        <span class="msg-time">${fmtTime(msg.time)}</span>
+      </div>
+      <div class="msg-text">${escHtml(msg.text)}</div>
+    </div>`;
+  container.appendChild(div);
+}
+
+function addSystemMsg(room, text) {
+  const div = document.createElement("div");
+  div.className = "system-msg";
+  div.textContent = text;
+  if (currentRoom === room) {
+    document.getElementById("messages").appendChild(div);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// CHECK-IN
+// ─────────────────────────────────────────────────────────────
+async function doCheckIn() {
+  const btn = document.getElementById("sideCheckinBtn");
+  try {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Sending...';
+    const tx = await checkInContract.checkIn();
+    btn.innerHTML = '<span class="spinner"></span>Confirming...';
+    await tx.wait();
+    toast("🎉 Checked in! CHECKERS incoming!", "success");
+    launchConfetti();
+    await refreshAll();
+    addSystemMsg("global", `${short(address)} just checked in! 🎉`);
+    updateGatingUI();
+  } catch(e) {
+    console.error(e);
+    btn.disabled = false; btn.textContent = "✅ Check In";
+    if (e.code===4001) toast("Cancelled.", "error");
+    else if (e.message?.includes("Already checked")) toast("Already checked in today!", "warn");
+    else toast("Transaction failed.", "error");
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// MINT NFT PASS
+// ─────────────────────────────────────────────────────────────
+async function mintPass() {
+  if (!PASS_ADDR) {
+    toast("Deploy CheckersPass.sol first and add its address to the app.", "warn");
+    return;
+  }
+  if (userBalance < 100) {
+    toast("You need at least 100 CHECKERS to mint a Pass.", "error"); return;
+  }
+  const btn = document.getElementById("mintBtn");
+  try {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Approving...';
+
+    // Step 1: approve CheckersPass to spend 100 CHECKERS
+    const approveTx = await tokenContract.approve(PASS_ADDR, ethers.parseUnits("100", 18));
+    await approveTx.wait();
+
+    // Step 2: mint
+    btn.innerHTML = '<span class="spinner"></span>Minting...';
+    const mintTx = await passContract.mint();
+    await mintTx.wait();
+
+    toast("🎫 Checkers Pass minted!", "success");
+    launchConfetti();
+    await refreshAll();
+    updateGatingUI();
+    addSystemMsg("global", `${short(address)} just minted a Checkers Pass! 🎫`);
+  } catch(e) {
+    console.error(e);
+    btn.disabled = false; btn.textContent = "Mint Pass (100 CHECKERS)";
+    if (e.code===4001) toast("Cancelled.", "error");
+    else toast("Mint failed. Check your CHECKERS balance.", "error");
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// LEADERBOARD
+// ─────────────────────────────────────────────────────────────
+async function loadLeaderboard() {
+  const panel = document.getElementById("lbPanel");
+  panel.innerHTML = '<div style="color:var(--muted);font-size:.85rem;padding:1rem">Loading...</div>';
+  try {
+    const total = Number(await checkInContract.totalUsers());
+    if (total === 0) {
+      panel.innerHTML = '<div style="color:var(--muted);padding:1rem">No check-ins yet!</div>'; return;
+    }
+    const limit = Math.min(total, 50);
+    const {addrs, streaks} = await checkInContract.getUsers(0, limit);
+    const entries = addrs
+      .map((a,i)=>({addr:a, streak:Number(streaks[i])}))
+      .sort((a,b)=>b.streak-a.streak).slice(0,20);
+
+    const medals  = ["🥇","🥈","🥉"];
+    const rClass  = ["gold","silver","bronze"];
+    panel.innerHTML = entries.map((e,i)=>{
+      const isYou = e.addr.toLowerCase()===address.toLowerCase();
+      const medal = i<3 ? medals[i] : `#${i+1}`;
+      const rc    = i<3 ? rClass[i] : "";
+      return `<div class="lb-row">
+        <div class="lb-rank ${rc}">${medal}</div>
+        <div class="lb-addr">${short(e.addr)} ${isYou?'<span class="lb-you">YOU</span>':''}</div>
+        <div class="lb-streak">🔥 ${e.streak}</div>
+      </div>`;
+    }).join("");
+  } catch(e){ console.error(e); panel.innerHTML='<div style="color:var(--muted);padding:1rem">Failed to load.</div>'; }
+}
+
+// ─────────────────────────────────────────────────────────────
+// COUNTDOWN
+// ─────────────────────────────────────────────────────────────
+function startCountdown() {
+  function tick() {
+    const now = new Date();
+    const midnight = new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()+1));
+    const diff = midnight - now;
+    const h = String(Math.floor(diff/3600000)).padStart(2,"0");
+    const m = String(Math.floor((diff%3600000)/60000)).padStart(2,"0");
+    const s = String(Math.floor((diff%60000)/1000)).padStart(2,"0");
+    document.getElementById("sideCountdown").textContent = `${h}:${m}:${s}`;
+    if (diff<=0) { clearInterval(countdownInterval); refreshUser(); }
+  }
+  tick();
+  countdownInterval = setInterval(tick,1000);
+}
+
+// ─────────────────────────────────────────────────────────────
+// CONFETTI
+// ─────────────────────────────────────────────────────────────
+function launchConfetti() {
+  const canvas = document.getElementById("confetti");
+  const ctx    = canvas.getContext("2d");
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const colors = ["#ff6eb4","#ffd93d","#6ee7b7","#60c8f5","#b48aff","#ff7f5c"];
+  const pieces = Array.from({length:100},()=>({
+    x:Math.random()*canvas.width, y:-20,
+    r:5+Math.random()*6, d:2+Math.random()*3,
+    color:colors[Math.floor(Math.random()*colors.length)],
+    angle:0, tiltSpeed:.1+Math.random()*.1
+  }));
+  let frame;
+  function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    pieces.forEach(p=>{
+      p.y+=p.d; p.angle+=p.tiltSpeed;
+      ctx.beginPath();
+      ctx.ellipse(p.x,p.y,p.r,p.r/2,Math.sin(p.angle)*12,0,Math.PI*2);
+      ctx.fillStyle=p.color; ctx.fill();
+    });
+    if(pieces.some(p=>p.y<canvas.height)) frame=requestAnimationFrame(draw);
+    else ctx.clearRect(0,0,canvas.width,canvas.height);
+  }
+  cancelAnimationFrame(frame); draw();
+  setTimeout(()=>{cancelAnimationFrame(frame);ctx.clearRect(0,0,canvas.width,canvas.height);},3000);
+}
+
+// ─────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────
+function short(a){ return a.slice(0,6)+"..."+a.slice(-4); }
+function fmtTime(ts){
+  const d=new Date(ts);
+  return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+}
+function escHtml(t){
+  return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+const COLORS=["#ff6eb4","#b48aff","#60c8f5","#6ee7b7","#ff7f5c","#ffd93d"];
+function addrColor(addr){ return COLORS[parseInt(addr.slice(2,4),16)%COLORS.length]; }
+function toast(msg,type=""){
+  const el=document.getElementById("toast");
+  el.textContent=msg; el.className="toast"+(type?" "+type:"");
+  setTimeout(()=>el.classList.add("show"),10);
+  setTimeout(()=>el.classList.remove("show"),3500);
+}
+function show(id){ document.getElementById(id)?.classList.remove("hidden"); }
+function hide(id){ document.getElementById(id)?.classList.add("hidden"); }
+function setConnectBtn(t,d){ const b=document.getElementById("connectBtn"); b.textContent=t; b.disabled=d; }
+</script>
+</body>
+</html>
