@@ -131,7 +131,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
       <div id="topWal"  class="pill pill-wallet hidden">
         <div class="dot-green"></div><span id="walAddr">&#8212;</span>
       </div>
-      <button class="btn-connect" id="connectBtn" onclick="connectWallet()">Connect MetaMask</button>
+      <button class="btn-connect" id="connectBtn" onclick="connectWallet()">Connect Wallet</button>
     </div>
   </div>
 
@@ -139,8 +139,8 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
     <div class="welcome-logo">&#10003; Checkers</div>
     <div style="font-size:3rem">&#127881;</div>
     <div class="welcome-sub">Check in daily &middot; Build your streak &middot; Earn CHECKERS tokens &middot; Chat with the community in real time</div>
-    <button class="btn-big" onclick="connectWallet()">Connect MetaMask to Start</button>
-    <div style="font-size:.78rem;color:var(--muted);font-weight:700;margin-top:.5rem">Base Sepolia Testnet</div>
+    <button class="btn-big" onclick="connectWallet()">Connect Wallet to Start</button>
+    <div style="font-size:.78rem;color:var(--muted);font-weight:700;margin-top:.5rem">Celo · Base · Ethereum</div>
   </div>
 
   <div class="main hidden" id="mainApp">
@@ -218,19 +218,47 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
 
 <script>
 // ════════════════════════════════════════════════
-// CONFIG — update these after redeployment
+// MULTI-CHAIN CONFIG
+// Add your deployed contract addresses for each
+// chain. The correct set is selected automatically
+// from the wallet's chainId on connect.
 // ════════════════════════════════════════════════
-const CFG = {
-  CHECKERS_TOKEN: "0x05B12E076AA6A7190258487F4D65733A467675d7",
-  CHECKIN_ADDR:   "0x932667a13f9D054CB3CE0785C2D529dc3904edbc",   //  eth mainnet
-  PASS_ADDR:      "0xEf56103c173C46050Cc747bbdC8fA95325CaD1F0",   // ← fill in after deploying CheckersPass.sol
-  VIP_MIN:        500,
-  STREAK_MIN:     7,
+const CHAINS = {
+  // ── Celo Mainnet ──────────────────────────────
+  42220n: {
+    name:          "Celo",
+    CHECKERS_TOKEN: "0x05B12E076AA6A7190258487F4D65733A467675d7",
+    CHECKIN_ADDR:   "0x932667a13f9D054CB3CE0785C2D529dc3904edbc",   //  eth mainnet
+    PASS_ADDR:      "0xEf56103c173C46050Cc747bbdC8fA95325CaD1F0",   // ← fill in after deploying CheckersPass.sol
+  },
+  // ── Base Mainnet ──────────────────────────────
+  8453n: {
+    name:          "Base",
+    CHECKERS_TOKEN: "0xd451Bf04f95B8Ed605868dD07cc56681284cf3e4",
+    CHECKIN_ADDR:   "0xAD9aE0DbA28AC3a266682723efEbD899022d1Fa6",   //  base mainnet
+    PASS_ADDR:      "0x85150186c7cd8dd16c7566d9a3ddf4f2b6cdb5b2",   // ← fill in after deploying CheckersPass.sol
+  },
+  // ── Ethereum Mainnet ──────────────────────────
+  1n: {
+    name:          "Ethereum",
+    CHECKERS_TOKEN: "0x4E432AA32b1A2F9fd674daf156E3b09dB2f4386c",
+    CHECKIN_ADDR:   "0xEe6B7cE78d92002d042b2478cDe66d9f54a6f667",   //  eth mainnet
+    PASS_ADDR:      "0x65Be7B17d4e73ceF1f1980E87dCc8069a4C7CbbB",   // ← fill in after deploying CheckersPass.sol
+  },
 };
 
+// Game constants (same on all chains)
+const VIP_MIN    = 500;
+const STREAK_MIN = 7;
+
+// Active chain config — set in connectWallet() once chainId is known.
+let CFG = null;
+
 // Unique Gun node keys scoped to your contract address
+// Gun room key is scoped to the check-in contract address + chain,
+// so rooms are isolated per deployment even if the same Gun relay is used.
 const ROOM_KEY = (room) =>
-  "checkers-" + CFG.CHECKIN_ADDR.slice(2,10).toLowerCase() + "-" + room;
+  "checkers-" + (CFG ? CFG.CHECKIN_ADDR.slice(2,10).toLowerCase() : "000000") + "-" + room;
 
 const TOKEN_ABI = [
   "function balanceOf(address) view returns (uint256)",
@@ -329,22 +357,58 @@ function sendMessage() {
   inp.value = ""; inp.focus();
 }
 
+// ── MiniPay detection ─────────────────────────────
+// MiniPay injects window.ethereum with isMiniPay=true.
+// When present: auto-connect on load, skip eth_requestAccounts,
+// hide connect buttons (wallet is implicit).
+const isMiniPay = !!(window.ethereum && window.ethereum.isMiniPay);
+if (isMiniPay) {
+  window.addEventListener("load", () => connectWallet());
+}
+
 // ── Connect wallet ────────────────────────────────
 async function connectWallet() {
-  if (!window.ethereum) { toast("Please install MetaMask!","error"); return; }
+  if (!window.ethereum) {
+    toast(isMiniPay ? "MiniPay not detected." : "Please install MetaMask!", "error");
+    return;
+  }
   try {
-    document.getElementById("connectBtn").textContent = "Connecting...";
-    document.getElementById("connectBtn").disabled = true;
+    const connectBtn = document.getElementById("connectBtn");
+    if (connectBtn) { connectBtn.textContent = "Connecting..."; connectBtn.disabled = true; }
+
     provider = new ethers.BrowserProvider(window.ethereum);
-    await provider.send("eth_requestAccounts", []);
+
+    // MiniPay: wallet already connected — skip the accounts prompt.
+    if (!isMiniPay) {
+      await provider.send("eth_requestAccounts", []);
+    }
+
     signer   = await provider.getSigner();
     userAddr = (await signer.getAddress()).toLowerCase();
+
+    // Resolve chain config from wallet's chainId.
+    const network = await provider.getNetwork();
+    const chainId = network.chainId;
+    CFG = CHAINS[chainId] || null;
+    if (!CFG) {
+      toast(`Unsupported network (chainId ${chainId}). Switch to Celo, Base, or Ethereum.`, "error");
+      if (connectBtn) { connectBtn.textContent = "Connect Wallet"; connectBtn.disabled = false; }
+      return;
+    }
+
     tokenC = new ethers.Contract(CFG.CHECKERS_TOKEN, TOKEN_ABI, signer);
     ciC    = new ethers.Contract(CFG.CHECKIN_ADDR,   CI_ABI,    signer);
     if (CFG.PASS_ADDR) passC = new ethers.Contract(CFG.PASS_ADDR, PASS_ABI, signer);
+
     hide("welcomeScreen"); show("mainApp");
-    hide("connectBtn"); show("topBal"); show("topStrk"); show("topWal");
-    document.getElementById("walAddr").textContent = short(userAddr);
+    // MiniPay: hide connect buttons — wallet is always connected implicitly.
+    if (isMiniPay) {
+      document.querySelectorAll(".btn-connect, .btn-big, #connectBtn").forEach(el => el.style.display = "none");
+    } else {
+      hide("connectBtn");
+    }
+    show("topBal"); show("topStrk"); show("topWal");
+    document.getElementById("walAddr").textContent = short(userAddr) + " · " + CFG.name;
     initGun();
     await refreshAll();
     switchRoom("global");
@@ -353,8 +417,8 @@ async function connectWallet() {
   } catch(e) {
     console.error(e);
     toast(e.code===4001 ? "Rejected." : "Connection failed.", "error");
-    document.getElementById("connectBtn").textContent = "Connect MetaMask";
-    document.getElementById("connectBtn").disabled = false;
+    const connectBtn = document.getElementById("connectBtn");
+    if (connectBtn) { connectBtn.textContent = "Connect Wallet"; connectBtn.disabled = false; }
   }
 }
 
@@ -394,8 +458,8 @@ async function refreshPass() {
 // ── Gating ────────────────────────────────────────
 function canAccess(r) {
   if (r==="global"||r==="lb") return true;
-  if (r==="vip")    return userBalance >= CFG.VIP_MIN;
-  if (r==="streak") return userStreak  >= CFG.STREAK_MIN;
+  if (r==="vip")    return userBalance >= VIP_MIN;
+  if (r==="streak") return userStreak  >= STREAK_MIN;
   if (r==="pass")   return userHasPass || !CFG.PASS_ADDR;
   return false;
 }
@@ -427,12 +491,12 @@ function renderLocked(room) {
   let title="",desc="",prog="";
   if (room==="vip") {
     title="&#128142; VIP Lounge";
-    desc="You need "+CFG.VIP_MIN+" CHECKERS to enter. Keep checking in daily!";
-    prog="Balance: "+userBalance.toFixed(1)+" / "+CFG.VIP_MIN+" CHECKERS";
+    desc="You need "+VIP_MIN+" CHECKERS to enter. Keep checking in daily!";
+    prog="Balance: "+userBalance.toFixed(1)+" / "+VIP_MIN+" CHECKERS";
   } else if (room==="streak") {
     title="&#128293; Streak Masters";
-    desc="You need a "+CFG.STREAK_MIN+"-day streak. Check in every day!";
-    prog="Streak: "+userStreak+" / "+CFG.STREAK_MIN+" days";
+    desc="You need a "+STREAK_MIN+"-day streak. Check in every day!";
+    prog="Streak: "+userStreak+" / "+STREAK_MIN+" days";
   } else if (room==="pass") {
     title="&#127915; Pass Holders";
     desc=CFG.PASS_ADDR ? "Burn 100 CHECKERS to mint your Pass and unlock this room."
@@ -450,7 +514,10 @@ async function doCheckIn() {
   const btn = document.getElementById("btnCI");
   try {
     btn.disabled=true; btn.innerHTML='<span class="sp"></span>Sending...';
-    const tx = await ciC.checkIn();
+    // MiniPay requires legacy transactions (no EIP-1559).
+    // Passing gasPrice explicitly works on MiniPay, Base, and Ethereum.
+    const feeData = await provider.getFeeData();
+    const tx = await ciC.checkIn({ gasPrice: feeData.gasPrice });
     btn.innerHTML='<span class="sp"></span>Confirming...';
     await tx.wait();
     toast("&#127881; Checked in! CHECKERS incoming!","success");
@@ -476,10 +543,13 @@ async function mintPass() {
   const btn = document.getElementById("btnMint");
   try {
     btn.disabled=true; btn.innerHTML='<span class="sp"></span>Approving...';
-    const appTx = await tokenC.approve(CFG.PASS_ADDR, ethers.parseUnits("100",18));
+    // MiniPay: legacy transactions
+    const feeData = await provider.getFeeData();
+    const gasOpts = { gasPrice: feeData.gasPrice };
+    const appTx = await tokenC.approve(CFG.PASS_ADDR, ethers.parseUnits("100",18), gasOpts);
     await appTx.wait();
     btn.innerHTML='<span class="sp"></span>Minting...';
-    const mintTx = await passC.mint(); await mintTx.wait();
+    const mintTx = await passC.mint(gasOpts); await mintTx.wait();
     toast("&#127915; Checkers Pass minted!","success");
     confetti(); await refreshAll(); updateGating();
   } catch(e) {
